@@ -351,3 +351,95 @@ def pattern_morning(db: Session = Depends(get_db)):
         "delta": delta,
         "readings": morning_readings
     }
+
+@app.get("/insulin/ratio_estimate")
+def insulin_ratio_estimate(db: Session = Depends(get_db)):
+    meals = db.query(MealEvent).order_by(MealEvent.id.desc()).limit(10).all()
+    glucose = db.query(GlucoseReading).order_by(GlucoseReading.id.asc()).all()
+    insulin = db.query(InsulinEvent).order_by(InsulinEvent.id.asc()).all()
+
+    analyses = []
+    ratio_samples = []
+
+    for meal in reversed(meals):
+        meal_time = parse_dt(meal.timestamp)
+
+        glucose_before = None
+        glucose_after = None
+        insulin_match = None
+
+        for g in glucose:
+            g_time = parse_dt(g.timestamp)
+            diff_minutes = (meal_time - g_time).total_seconds() / 60
+            if 0 <= diff_minutes <= 60:
+                glucose_before = g
+
+        for g in glucose:
+            g_time = parse_dt(g.timestamp)
+            diff_minutes = (g_time - meal_time).total_seconds() / 60
+            if 60 <= diff_minutes <= 180:
+                glucose_after = g
+                break
+
+        for i in insulin:
+            i_time = parse_dt(i.timestamp)
+            diff_minutes = abs((meal_time - i_time).total_seconds() / 60)
+            if diff_minutes <= 45:
+                insulin_match = i
+
+        if not meal.carbs or not insulin_match or not glucose_before or not glucose_after:
+            analyses.append({
+                "meal": meal.description,
+                "timestamp": meal.timestamp,
+                "status": "insufficient_data"
+            })
+            continue
+
+        delta = round(glucose_after.value - glucose_before.value, 1)
+        observed_ratio = round(meal.carbs / insulin_match.units, 1) if insulin_match.units > 0 else None
+
+        comment = "ratio_seems_reasonable"
+        adjustment_hint = "keep_observing"
+
+        if delta > 3.0:
+            comment = "possible_underbolus"
+            adjustment_hint = "may_need_stronger_ratio"
+        elif delta > 1.5:
+            comment = "moderate_rise"
+            adjustment_hint = "slightly_stronger_ratio_may_help"
+        elif delta < -2.0:
+            comment = "possible_overbolus"
+            adjustment_hint = "may_need_weaker_ratio"
+
+        ratio_samples.append(observed_ratio)
+
+        analyses.append({
+            "meal": meal.description,
+            "timestamp": meal.timestamp,
+            "carbs": meal.carbs,
+            "insulin_units": insulin_match.units,
+            "insulin_type": insulin_match.insulin_type,
+            "glucose_before": glucose_before.value,
+            "glucose_after": glucose_after.value,
+            "delta": delta,
+            "observed_ratio_g_per_unit": observed_ratio,
+            "comment": comment,
+            "adjustment_hint": adjustment_hint
+        })
+
+    usable_ratios = [r for r in ratio_samples if r is not None]
+
+    if usable_ratios:
+        average_ratio = round(sum(usable_ratios) / len(usable_ratios), 1)
+    else:
+        average_ratio = None
+
+    overall_message = "Not enough usable meal data to estimate ratio."
+    if average_ratio is not None:
+        overall_message = f"Estimated observed ratio is around 1 unit per {average_ratio} g of carbs."
+
+    return {
+        "estimated_ratio_g_per_unit": average_ratio,
+        "overall_message": overall_message,
+        "meal_analyses": analyses
+    }
