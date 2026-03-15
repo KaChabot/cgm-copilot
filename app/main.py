@@ -1,4 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
+from sqlalchemy.orm import Session
+
+from app.db import Base, engine, SessionLocal
+from app.models import GlucoseReading
 
 app = FastAPI(
     title="CGM Copilot API",
@@ -7,14 +11,42 @@ app = FastAPI(
     servers=[{"url": "https://cgm-copilot-api.onrender.com"}]
 )
 
+Base.metadata.create_all(bind=engine)
 
-@app.get("/health", summary="Health check")
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@app.get("/")
+def root():
+    return {"message": "CGM Copilot API is running"}
+
+
+@app.get("/health")
 def health():
     return {"status": "ok"}
 
 
-@app.get("/glucose/current", summary="Get current glucose reading")
-def glucose_current():
+@app.get("/glucose/current")
+def glucose_current(db: Session = Depends(get_db)):
+    latest = db.query(GlucoseReading).order_by(GlucoseReading.id.desc()).first()
+
+    if latest:
+        return {
+            "glucose": {
+                "value": latest.value,
+                "unit": "mmol/L",
+                "trend": latest.trend or "unknown"
+            },
+            "timestamp": latest.timestamp,
+            "source": latest.source or "database"
+        }
+
     return {
         "glucose": {
             "value": 7.8,
@@ -26,8 +58,22 @@ def glucose_current():
     }
 
 
-@app.get("/glucose/history", summary="Get recent glucose history")
-def glucose_history():
+@app.get("/glucose/history")
+def glucose_history(db: Session = Depends(get_db)):
+    readings = db.query(GlucoseReading).order_by(GlucoseReading.id.desc()).limit(10).all()
+
+    if readings:
+        return {
+            "readings": [
+                {
+                    "value": reading.value,
+                    "timestamp": reading.timestamp
+                }
+                for reading in reversed(readings)
+            ],
+            "unit": "mmol/L"
+        }
+
     return {
         "readings": [
             {"value": 7.1, "timestamp": "2026-03-14T08:00:00"},
@@ -39,12 +85,17 @@ def glucose_history():
     }
 
 
-@app.get("/glucose/analysis", summary="Get simple glucose trend analysis")
-def glucose_analysis():
-    readings = [7.1, 7.8, 8.2, 7.9]
+@app.get("/glucose/analysis")
+def glucose_analysis(db: Session = Depends(get_db)):
+    readings = db.query(GlucoseReading).order_by(GlucoseReading.id.desc()).limit(4).all()
 
-    first_value = readings[0]
-    last_value = readings[-1]
+    if readings and len(readings) >= 2:
+        values = [r.value for r in reversed(readings)]
+    else:
+        values = [7.1, 7.8, 8.2, 7.9]
+
+    first_value = values[0]
+    last_value = values[-1]
     delta = round(last_value - first_value, 1)
 
     if delta > 0.3:
@@ -71,4 +122,28 @@ def glucose_analysis():
         "delta": delta,
         "risk": risk,
         "insight": insight
+    }
+
+
+@app.post("/glucose/add")
+def add_glucose_reading(
+    value: float,
+    timestamp: str,
+    trend: str = "stable",
+    source: str = "manual",
+    db: Session = Depends(get_db)
+):
+    reading = GlucoseReading(
+        value=value,
+        timestamp=timestamp,
+        trend=trend,
+        source=source
+    )
+    db.add(reading)
+    db.commit()
+    db.refresh(reading)
+
+    return {
+        "message": "Reading added successfully",
+        "id": reading.id
     }
