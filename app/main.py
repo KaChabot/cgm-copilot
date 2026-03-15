@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
+from datetime import datetime
 
 from app.db import Base, engine, SessionLocal
 from app.models import GlucoseReading, MealEvent, InsulinEvent
@@ -20,6 +21,10 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def parse_dt(value: str):
+    return datetime.fromisoformat(value)
 
 
 @app.get("/")
@@ -225,4 +230,124 @@ def day_summary(db: Session = Depends(get_db)):
             }
             for i in reversed(insulin)
         ]
+    }
+
+
+@app.get("/meal/analysis")
+def meal_analysis(db: Session = Depends(get_db)):
+    meals = db.query(MealEvent).order_by(MealEvent.id.desc()).limit(5).all()
+    glucose = db.query(GlucoseReading).order_by(GlucoseReading.id.asc()).all()
+    insulin = db.query(InsulinEvent).order_by(InsulinEvent.id.asc()).all()
+
+    results = []
+
+    for meal in reversed(meals):
+        meal_time = parse_dt(meal.timestamp)
+
+        glucose_before = None
+        glucose_after = None
+        insulin_match = None
+
+        for g in glucose:
+            g_time = parse_dt(g.timestamp)
+            diff_minutes = (meal_time - g_time).total_seconds() / 60
+
+            if 0 <= diff_minutes <= 60:
+                glucose_before = g
+
+        for g in glucose:
+            g_time = parse_dt(g.timestamp)
+            diff_minutes = (g_time - meal_time).total_seconds() / 60
+
+            if 60 <= diff_minutes <= 180:
+                glucose_after = g
+                break
+
+        for i in insulin:
+            i_time = parse_dt(i.timestamp)
+            diff_minutes = abs((meal_time - i_time).total_seconds() / 60)
+
+            if diff_minutes <= 45:
+                insulin_match = i
+
+        delta = None
+        assessment = "insufficient_data"
+
+        if glucose_before and glucose_after:
+            delta = round(glucose_after.value - glucose_before.value, 1)
+
+            if delta > 3.0:
+                assessment = "possible_underbolus_or_high_meal_impact"
+            elif delta > 1.5:
+                assessment = "moderate_post_meal_rise"
+            else:
+                assessment = "post_meal_response_seems_reasonable"
+
+        results.append({
+            "meal": {
+                "description": meal.description,
+                "carbs": meal.carbs,
+                "timestamp": meal.timestamp
+            },
+            "matched_insulin": {
+                "insulin_type": insulin_match.insulin_type,
+                "units": insulin_match.units,
+                "timestamp": insulin_match.timestamp
+            } if insulin_match else None,
+            "glucose_before": {
+                "value": glucose_before.value,
+                "timestamp": glucose_before.timestamp
+            } if glucose_before else None,
+            "glucose_after": {
+                "value": glucose_after.value,
+                "timestamp": glucose_after.timestamp
+            } if glucose_after else None,
+            "delta": delta,
+            "assessment": assessment
+        })
+
+    return {"meal_analysis": results}
+
+
+@app.get("/pattern/morning")
+def pattern_morning(db: Session = Depends(get_db)):
+    glucose = db.query(GlucoseReading).order_by(GlucoseReading.id.asc()).all()
+
+    morning_readings = []
+
+    for g in glucose:
+        dt = parse_dt(g.timestamp)
+        if 4 <= dt.hour <= 10:
+            morning_readings.append({
+                "value": g.value,
+                "timestamp": g.timestamp,
+                "hour": dt.hour
+            })
+
+    if len(morning_readings) < 2:
+        return {
+            "pattern": "insufficient_data",
+            "message": "Not enough morning readings to detect a pattern.",
+            "readings": morning_readings
+        }
+
+    first_value = morning_readings[0]["value"]
+    last_value = morning_readings[-1]["value"]
+    delta = round(last_value - first_value, 1)
+
+    if delta >= 2.0:
+        pattern = "possible_dawn_phenomenon"
+        message = "Morning glucose appears to rise significantly across the morning period."
+    elif delta >= 0.8:
+        pattern = "mild_morning_rise"
+        message = "Morning glucose shows a noticeable upward trend."
+    else:
+        pattern = "stable_morning_pattern"
+        message = "Morning glucose appears relatively stable."
+
+    return {
+        "pattern": pattern,
+        "message": message,
+        "delta": delta,
+        "readings": morning_readings
     }
