@@ -443,3 +443,60 @@ def insulin_ratio_estimate(db: Session = Depends(get_db)):
         "overall_message": overall_message,
         "meal_analyses": analyses
     }
+
+@app.get("/meal/underbolused")
+def meal_underbolused(db: Session = Depends(get_db)):
+    meals = db.query(MealEvent).order_by(MealEvent.id.desc()).limit(10).all()
+    glucose = db.query(GlucoseReading).order_by(GlucoseReading.id.asc()).all()
+    insulin = db.query(InsulinEvent).order_by(InsulinEvent.id.asc()).all()
+
+    flagged_meals = []
+
+    for meal in reversed(meals):
+        meal_time = parse_dt(meal.timestamp)
+
+        glucose_before = None
+        glucose_after = None
+        insulin_match = None
+
+        for g in glucose:
+            g_time = parse_dt(g.timestamp)
+            diff_minutes = (meal_time - g_time).total_seconds() / 60
+            if 0 <= diff_minutes <= 60:
+                glucose_before = g
+
+        for g in glucose:
+            g_time = parse_dt(g.timestamp)
+            diff_minutes = (g_time - meal_time).total_seconds() / 60
+            if 60 <= diff_minutes <= 180:
+                glucose_after = g
+                break
+
+        for i in insulin:
+            i_time = parse_dt(i.timestamp)
+            diff_minutes = abs((meal_time - i_time).total_seconds() / 60)
+            if diff_minutes <= 45:
+                insulin_match = i
+
+        if not glucose_before or not glucose_after or not insulin_match:
+            continue
+
+        delta = round(glucose_after.value - glucose_before.value, 1)
+
+        if delta >= 2.5:
+            flagged_meals.append({
+                "meal": meal.description,
+                "timestamp": meal.timestamp,
+                "carbs": meal.carbs,
+                "insulin_type": insulin_match.insulin_type,
+                "insulin_units": insulin_match.units,
+                "glucose_before": glucose_before.value,
+                "glucose_after": glucose_after.value,
+                "delta": delta,
+                "flag": "possible_underbolus"
+            })
+
+    return {
+        "count": len(flagged_meals),
+        "flagged_meals": flagged_meals
+    }
