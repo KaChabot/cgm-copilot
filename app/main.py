@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends
 from sqlalchemy.orm import Session
 
 from app.db import Base, engine, SessionLocal
-from app.models import GlucoseReading
+from app.models import GlucoseReading, MealEvent, InsulinEvent
 
 app = FastAPI(
     title="CGM Copilot API",
@@ -146,4 +146,83 @@ def add_glucose_reading(
     return {
         "message": "Reading added successfully",
         "id": reading.id
+    }
+
+
+@app.post("/meal/add")
+def add_meal(
+    description: str,
+    timestamp: str,
+    carbs: float = 0,
+    db: Session = Depends(get_db)
+):
+    meal = MealEvent(
+        description=description,
+        carbs=carbs,
+        timestamp=timestamp
+    )
+    db.add(meal)
+    db.commit()
+    db.refresh(meal)
+
+    return {
+        "message": "Meal added successfully",
+        "id": meal.id
+    }
+
+
+@app.post("/insulin/add")
+def add_insulin(
+    insulin_type: str,
+    units: float,
+    timestamp: str,
+    db: Session = Depends(get_db)
+):
+    insulin = InsulinEvent(
+        insulin_type=insulin_type,
+        units=units,
+        timestamp=timestamp
+    )
+    db.add(insulin)
+    db.commit()
+    db.refresh(insulin)
+
+    return {
+        "message": "Insulin added successfully",
+        "id": insulin.id
+    }
+
+
+@app.get("/day/summary")
+def day_summary(db: Session = Depends(get_db)):
+    glucose = db.query(GlucoseReading).order_by(GlucoseReading.id.desc()).limit(10).all()
+    meals = db.query(MealEvent).order_by(MealEvent.id.desc()).limit(10).all()
+    insulin = db.query(InsulinEvent).order_by(InsulinEvent.id.desc()).limit(10).all()
+
+    return {
+        "glucose_readings": [
+            {
+                "value": g.value,
+                "timestamp": g.timestamp,
+                "trend": g.trend,
+                "source": g.source
+            }
+            for g in reversed(glucose)
+        ],
+        "meals": [
+            {
+                "description": m.description,
+                "carbs": m.carbs,
+                "timestamp": m.timestamp
+            }
+            for m in reversed(meals)
+        ],
+        "insulin_events": [
+            {
+                "insulin_type": i.insulin_type,
+                "units": i.units,
+                "timestamp": i.timestamp
+            }
+            for i in reversed(insulin)
+        ]
     }
