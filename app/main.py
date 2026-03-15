@@ -3,7 +3,8 @@ from fastapi import FastAPI
 app = FastAPI(
     title="CGM Copilot API",
     description="Prototype API for glucose readings and simple analysis",
-    version="0.1.0"
+    version="0.1.0",
+    servers=[{"url": "https://cgm-copilot-api.onrender.com"}]
 )
 
 
