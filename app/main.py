@@ -539,14 +539,21 @@ from datetime import datetime, timedelta
 def report_summary_90d(db: Session = Depends(get_db)):
     cutoff = datetime.utcnow() - timedelta(days=90)
 
-    readings = db.query(GlucoseReading)\
-        .filter(GlucoseReading.timestamp >= cutoff)\
-        .all()
+    readings = db.query(GlucoseReading).all()
 
-    if not readings:
+    recent_readings = []
+    for r in readings:
+        try:
+            ts = datetime.fromisoformat(r.timestamp)
+            if ts >= cutoff:
+                recent_readings.append(r)
+        except Exception:
+            continue
+
+    if not recent_readings:
         return {"message": "No data for last 90 days"}
 
-    values = [r.value for r in readings]
+    values = [r.value for r in recent_readings]
 
     avg = sum(values) / len(values)
     min_val = min(values)
