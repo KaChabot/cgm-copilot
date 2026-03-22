@@ -3,7 +3,11 @@ import requests
 from datetime import datetime
 import time
 import os
+from pathlib import Path
 from dotenv import load_dotenv
+
+env_path = Path(__file__).resolve().parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 USERNAME = os.getenv("LIBRELINKUP_USERNAME")
 PASSWORD = os.getenv("LIBRELINKUP_PASSWORD")
