@@ -532,3 +532,35 @@ def meal_underbolused(db: Session = Depends(get_db)):
         "count": len(flagged_meals),
         "flagged_meals": flagged_meals
     }
+
+from datetime import datetime, timedelta
+
+@app.get("/report/summary_90d")
+def report_summary_90d(db: Session = Depends(get_db)):
+    cutoff = datetime.utcnow() - timedelta(days=90)
+
+    readings = db.query(GlucoseReading)\
+        .filter(GlucoseReading.timestamp >= cutoff)\
+        .all()
+
+    if not readings:
+        return {"message": "No data for last 90 days"}
+
+    values = [r.value for r in readings]
+
+    avg = sum(values) / len(values)
+    min_val = min(values)
+    max_val = max(values)
+
+    highs = len([v for v in values if v > 10])
+    lows = len([v for v in values if v < 4])
+
+    return {
+        "period_days": 90,
+        "total_readings": len(values),
+        "average_glucose": round(avg, 2),
+        "min_glucose": min_val,
+        "max_glucose": max_val,
+        "high_events": highs,
+        "low_events": lows
+    }
