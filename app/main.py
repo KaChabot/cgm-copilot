@@ -584,3 +584,19 @@ def report_summary_90d(db: Session = Depends(get_db)):
         "high_events": highs,
         "low_events": lows
     }
+
+@app.get("/report/debug_timestamps")
+def report_debug_timestamps(db: Session = Depends(get_db)):
+    readings = db.query(GlucoseReading).order_by(GlucoseReading.id.desc()).limit(20).all()
+
+    return {
+        "timestamps": [
+            {
+                "id": r.id,
+                "timestamp": r.timestamp,
+                "value": r.value,
+                "source": r.source
+            }
+            for r in readings
+        ]
+    }
