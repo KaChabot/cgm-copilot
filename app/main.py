@@ -535,55 +535,6 @@ def meal_underbolused(db: Session = Depends(get_db)):
 
 from datetime import datetime, timedelta
 
-@app.get("/report/summary_90d")
-def report_summary_90d(db: Session = Depends(get_db)):
-    readings = db.query(GlucoseReading).all()
-
-    parsed_readings = []
-    for r in readings:
-        try:
-            ts = datetime.fromisoformat(r.timestamp)
-            parsed_readings.append({"reading": r, "ts": ts})
-        except Exception:
-            continue
-
-    if not parsed_readings:
-        return {"message": "No readable glucose data found"}
-
-    latest_ts = max(item["ts"] for item in parsed_readings)
-    cutoff = latest_ts - timedelta(days=90)
-
-    recent_readings = [
-        item["reading"]
-        for item in parsed_readings
-        if item["ts"] >= cutoff
-    ]
-
-    if not recent_readings:
-        return {
-            "message": "No data for last 90 days",
-            "latest_timestamp_found": latest_ts.isoformat()
-        }
-
-    values = [r.value for r in recent_readings]
-
-    avg = sum(values) / len(values)
-    min_val = min(values)
-    max_val = max(values)
-
-    highs = len([v for v in values if v > 10])
-    lows = len([v for v in values if v < 4])
-
-    return {
-        "period_days": 90,
-        "based_on_latest_timestamp": latest_ts.isoformat(),
-        "total_readings": len(values),
-        "average_glucose": round(avg, 2),
-        "min_glucose": min_val,
-        "max_glucose": max_val,
-        "high_events": highs,
-        "low_events": lows
-    }
 
 @app.get("/report/debug_timestamps")
 def report_debug_timestamps(db: Session = Depends(get_db)):
@@ -616,7 +567,12 @@ def report_problems_90d(db: Session = Depends(get_db)):
         try:
             ts_raw = str(r.timestamp).strip()
             ts = datetime.fromisoformat(ts_raw)
-            parsed_glucose.append({"reading": r, "ts": ts})
+            parsed_glucose.append({
+                "id": r.id,
+                "timestamp": ts_raw,
+                "value": r.value,
+                "ts": ts.isoformat()
+            })
         except Exception as e:
             parse_errors.append({
                 "id": r.id,
@@ -624,94 +580,11 @@ def report_problems_90d(db: Session = Depends(get_db)):
                 "error": str(e)
             })
 
-    if not parsed_glucose:
-        return {
-            "message": "No readable glucose data found",
-            "parse_errors": parse_errors
-        }
-
-    latest_ts = max(item["ts"] for item in parsed_glucose)
-    cutoff = latest_ts - timedelta(days=90)
-
-    recent_glucose = [item for item in parsed_glucose if item["ts"] >= cutoff]
-    values = [item["reading"].value for item in recent_glucose]
-
-    high_events = len([v for v in values if v > 10])
-    low_events = len([v for v in values if v < 4])
-
-    morning_readings = [item for item in recent_glucose if 4 <= item["ts"].hour <= 10]
-
-    possible_morning_rise = False
-    if len(morning_readings) >= 2:
-        first_val = morning_readings[0]["reading"].value
-        last_val = morning_readings[-1]["reading"].value
-        if (last_val - first_val) >= 2.0:
-            possible_morning_rise = True
-
-    possible_underbolused_meals = 0
-
-    for meal in meals:
-        try:
-            meal_ts = datetime.fromisoformat(str(meal.timestamp).strip())
-        except Exception:
-            continue
-
-        if meal_ts < cutoff:
-            continue
-
-        glucose_before = None
-        glucose_after = None
-        insulin_match = None
-
-        for g in recent_glucose:
-            diff_minutes = (meal_ts - g["ts"]).total_seconds() / 60
-            if 0 <= diff_minutes <= 60:
-                glucose_before = g["reading"]
-
-        for g in recent_glucose:
-            diff_minutes = (g["ts"] - meal_ts).total_seconds() / 60
-            if 60 <= diff_minutes <= 180:
-                glucose_after = g["reading"]
-                break
-
-        for i in insulin:
-            try:
-                insulin_ts = datetime.fromisoformat(str(i.timestamp).strip())
-            except Exception:
-                continue
-
-            diff_minutes = abs((meal_ts - insulin_ts).total_seconds() / 60)
-            if diff_minutes <= 45:
-                insulin_match = i
-                break
-
-        if glucose_before and glucose_after and insulin_match:
-            delta = glucose_after.value - glucose_before.value
-            if delta >= 2.5:
-                possible_underbolused_meals += 1
-
-    problems_detected = []
-
-    if high_events > 0:
-        problems_detected.append(f"{high_events} hyperglycemia readings above 10 mmol/L detected.")
-    if low_events > 0:
-        problems_detected.append(f"{low_events} hypoglycemia readings below 4 mmol/L detected.")
-    if possible_morning_rise:
-        problems_detected.append("Possible dawn phenomenon or morning rise detected.")
-    if possible_underbolused_meals > 0:
-        problems_detected.append(f"{possible_underbolused_meals} meals appear possibly under-bolused.")
-
-    if not problems_detected:
-        problems_detected.append("No major recurring problems detected from current data.")
-
     return {
-        "period_days": 90,
-        "based_on_latest_timestamp": latest_ts.isoformat(),
-        "total_readings": len(values),
-        "high_events": high_events,
-        "low_events": low_events,
-        "possible_morning_rise": possible_morning_rise,
-        "possible_underbolused_meals": possible_underbolused_meals,
-        "problems_detected": problems_detected,
-        "parse_errors": parse_errors
+        "glucose_count_raw": len(glucose_readings),
+        "meal_count_raw": len(meals),
+        "insulin_count_raw": len(insulin),
+        "parsed_glucose_count": len(parsed_glucose),
+        "parsed_glucose_sample": parsed_glucose[:5],
+        "parse_errors": parse_errors[:5]
     }
