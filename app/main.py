@@ -537,21 +537,33 @@ from datetime import datetime, timedelta
 
 @app.get("/report/summary_90d")
 def report_summary_90d(db: Session = Depends(get_db)):
-    cutoff = datetime.utcnow() - timedelta(days=90)
-
     readings = db.query(GlucoseReading).all()
 
-    recent_readings = []
+    parsed_readings = []
     for r in readings:
         try:
             ts = datetime.fromisoformat(r.timestamp)
-            if ts >= cutoff:
-                recent_readings.append(r)
+            parsed_readings.append({"reading": r, "ts": ts})
         except Exception:
             continue
 
+    if not parsed_readings:
+        return {"message": "No readable glucose data found"}
+
+    latest_ts = max(item["ts"] for item in parsed_readings)
+    cutoff = latest_ts - timedelta(days=90)
+
+    recent_readings = [
+        item["reading"]
+        for item in parsed_readings
+        if item["ts"] >= cutoff
+    ]
+
     if not recent_readings:
-        return {"message": "No data for last 90 days"}
+        return {
+            "message": "No data for last 90 days",
+            "latest_timestamp_found": latest_ts.isoformat()
+        }
 
     values = [r.value for r in recent_readings]
 
@@ -564,6 +576,7 @@ def report_summary_90d(db: Session = Depends(get_db)):
 
     return {
         "period_days": 90,
+        "based_on_latest_timestamp": latest_ts.isoformat(),
         "total_readings": len(values),
         "average_glucose": round(avg, 2),
         "min_glucose": min_val,
