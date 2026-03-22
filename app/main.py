@@ -53,15 +53,36 @@ def glucose_current(db: Session = Depends(get_db)):
         }
 
     return {
-        "glucose": {
-            "value": 7.8,
-            "unit": "mmol/L",
-            "trend": "stable"
-        },
-        "timestamp": "2026-03-14T12:05:00",
-        "source": "mock"
+        "error": "No glucose readings found in database",
+        "source": "none"
     }
 
+@app.get("/glucose/debug")
+def glucose_debug(db: Session = Depends(get_db)):
+    readings = db.query(GlucoseReading).order_by(GlucoseReading.id.desc()).limit(20).all()
+
+    return {
+        "readings": [
+            {
+                "id": r.id,
+                "value": r.value,
+                "timestamp": r.timestamp,
+                "trend": r.trend,
+                "source": r.source
+            }
+            for r in readings
+        ]
+    }
+
+@app.delete("/glucose/clear")
+def clear_glucose(db: Session = Depends(get_db)):
+    deleted = db.query(GlucoseReading).delete()
+    db.commit()
+
+    return {
+        "message": "Glucose readings cleared",
+        "deleted_count": deleted
+    }
 
 @app.get("/glucose/history")
 def glucose_history(db: Session = Depends(get_db)):

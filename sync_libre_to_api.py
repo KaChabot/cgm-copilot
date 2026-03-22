@@ -3,8 +3,8 @@ import requests
 from datetime import datetime
 import time
 
-USERNAME = "TON_EMAIL_LIBRELINKUP"
-PASSWORD = "TON_MOT_DE_PASSE_LIBRELINKUP"
+USERNAME = "katherinechabot@outlook.fr"
+PASSWORD = "Monique1980!"
 URL = "https://api-ca.libreview.io"
 
 API_URL = "https://cgm-copilot-api.onrender.com/glucose/add"
