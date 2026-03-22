@@ -139,15 +139,16 @@ def add_glucose_reading(
     db: Session = Depends(get_db)
 ):
     existing = db.query(GlucoseReading).filter(
-    GlucoseReading.timestamp == timestamp,
-    GlucoseReading.source == source
-).first()
+        GlucoseReading.timestamp == timestamp,
+        GlucoseReading.source == source
+    ).first()
 
-if existing:
-    return {
-        "message": "Reading already exists",
-        "id": existing.id
-    }
+    if existing:
+        return {
+            "message": "Reading already exists",
+            "id": existing.id
+        }
+
     reading = GlucoseReading(
         value=value,
         timestamp=timestamp,
