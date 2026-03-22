@@ -588,3 +588,66 @@ def report_problems_90d(db: Session = Depends(get_db)):
         "parsed_glucose_sample": parsed_glucose[:5],
         "parse_errors": parse_errors[:5]
     }
+
+@app.get("/report/summary_90d")
+def report_summary_90d(db: Session = Depends(get_db)):
+    from datetime import datetime, timedelta
+
+    glucose_readings = db.query(GlucoseReading).all()
+
+    parsed_glucose = []
+    parse_errors = []
+
+    for r in glucose_readings:
+        try:
+            ts_raw = str(r.timestamp).strip()
+            ts = datetime.fromisoformat(ts_raw)
+            parsed_glucose.append({
+                "reading": r,
+                "ts": ts
+            })
+        except Exception as e:
+            parse_errors.append({
+                "id": r.id,
+                "timestamp": str(r.timestamp),
+                "error": str(e)
+            })
+
+    if not parsed_glucose:
+        return {
+            "message": "No readable glucose data found",
+            "parse_errors": parse_errors
+        }
+
+    latest_ts = max(item["ts"] for item in parsed_glucose)
+    cutoff = latest_ts - timedelta(days=90)
+
+    recent_glucose = [item for item in parsed_glucose if item["ts"] >= cutoff]
+
+    if not recent_glucose:
+        return {
+            "message": "No data for last 90 days",
+            "based_on_latest_timestamp": latest_ts.isoformat(),
+            "parse_errors": parse_errors
+        }
+
+    values = [item["reading"].value for item in recent_glucose]
+
+    avg = sum(values) / len(values)
+    min_val = min(values)
+    max_val = max(values)
+
+    highs = len([v for v in values if v > 10])
+    lows = len([v for v in values if v < 4])
+
+    return {
+        "period_days": 90,
+        "based_on_latest_timestamp": latest_ts.isoformat(),
+        "total_readings": len(values),
+        "average_glucose": round(avg, 2),
+        "min_glucose": min_val,
+        "max_glucose": max_val,
+        "high_events": highs,
+        "low_events": lows,
+        "parse_errors": parse_errors
+    }
