@@ -476,7 +476,7 @@ def insulin_ratio_estimate(db: Session = Depends(get_db)):
         "meal_analyses": analyses
     }
 
-@app.get("/meal/underbolused")
+@app.get("/meal/underbold")
 def meal_underbolused(db: Session = Depends(get_db)):
     meals = db.query(MealEvent).order_by(MealEvent.id.desc()).limit(10).all()
     glucose = db.query(GlucoseReading).order_by(GlucoseReading.id.asc()).all()
@@ -532,7 +532,3 @@ def meal_underbolused(db: Session = Depends(get_db)):
         "count": len(flagged_meals),
         "flagged_meals": flagged_meals
     }
-
-print("USERNAME", USERNAME)
-print("PASSWORD", PASSWORD)
-print("URL", URL)
