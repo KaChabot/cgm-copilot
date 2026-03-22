@@ -2,13 +2,18 @@ from libre_link_up import LibreLinkUpClient
 import requests
 from datetime import datetime
 import time
+import os
+from dotenv import load_dotenv
 
-USERNAME = "katherinechabot@outlook.fr"
-PASSWORD = "Monique1980!"
-URL = "https://api-ca.libreview.io"
+USERNAME = os.getenv("LIBRELINKUP_USERNAME")
+PASSWORD = os.getenv("LIBRELINKUP_PASSWORD")
+URL = os.getenv("LIBRELINKUP_URL")
 
-API_URL = "https://cgm-copilot-api.onrender.com/glucose/add"
-HEALTH_URL = "https://cgm-copilot-api.onrender.com/health"
+API_URL = os.getenv("API_URL")
+HEALTH_URL = os.getenv("HEALTH_URL")
+
+if not USERNAME or not PASSWORD or not API_URL or not HEALTH_URL:
+    raise ValueError("Variables d'environnement manquantes. Veuillez vérifier votre fichier .env")
 
 
 def map_trend_arrow(trend_arrow: int) -> str:
@@ -70,3 +75,7 @@ while True:
 
     print("Prochaine lecture dans 5 minutes")
     time.sleep(300)
+
+print("USERNAME", USERNAME)
+print("PASSWORD", PASSWORD)
+print("URL", URL)

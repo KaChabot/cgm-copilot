@@ -532,3 +532,7 @@ def meal_underbolused(db: Session = Depends(get_db)):
         "count": len(flagged_meals),
         "flagged_meals": flagged_meals
     }
+
+print("USERNAME", USERNAME)
+print("PASSWORD", PASSWORD)
+print("URL", URL)
