@@ -657,66 +657,93 @@ def report_physician_90d(db: Session = Depends(get_db)):
     summary = report_summary_90d(db)
     problems = report_problems_90d(db)
 
+    if not isinstance(summary, dict):
+        return {"message": "Invalid summary response"}
+
+    if not isinstance(problems, dict):
+        return {"message": "Invalid problems response"}
+
     if "message" in summary:
-        return {"message": "Not enough data to generate report"}
+        return {
+            "message": "Not enough data to generate report",
+            "summary_status": summary
+        }
+
+    if "message" in problems and "possible_morning_rise" not in problems:
+        return {
+            "message": "Problems analysis not available",
+            "problems_status": problems
+        }
+
+    average_glucose = summary.get("average_glucose")
+    min_glucose = summary.get("min_glucose")
+    max_glucose = summary.get("max_glucose")
+    total_readings = summary.get("total_readings", 0)
+    high_events = summary.get("high_events", 0)
+    low_events = summary.get("low_events", 0)
+
+    possible_morning_rise = problems.get("possible_morning_rise", False)
+    possible_underbolused_meals = problems.get("possible_underbolused_meals", 0)
 
     report = {
         "title": "Glucose Monitoring Report (Last 90 Days)",
         "summary": {
-            "average_glucose": summary["average_glucose"],
-            "min_glucose": summary["min_glucose"],
-            "max_glucose": summary["max_glucose"],
-            "total_readings": summary["total_readings"]
+            "average_glucose": average_glucose,
+            "min_glucose": min_glucose,
+            "max_glucose": max_glucose,
+            "total_readings": total_readings
         },
         "events": {
-            "hyperglycemia_events": summary["high_events"],
-            "hypoglycemia_events": summary["low_events"]
+            "hyperglycemia_events": high_events,
+            "hypoglycemia_events": low_events
         },
         "patterns_detected": {
-            "morning_rise": problems["possible_morning_rise"],
-            "underbolused_meals": problems["possible_underbolused_meals"]
+            "morning_rise": possible_morning_rise,
+            "underbolused_meals": possible_underbolused_meals
         },
         "clinical_interpretation": [],
         "recommendations": []
     }
 
-    # Interprétation
-    if summary["average_glucose"] > 10:
+    if average_glucose is None:
+        report["clinical_interpretation"].append(
+            "Average glucose could not be calculated."
+        )
+    elif average_glucose > 10:
         report["clinical_interpretation"].append(
             "Average glucose suggests overall hyperglycemia."
         )
-    elif summary["average_glucose"] < 4:
+    elif average_glucose < 4:
         report["clinical_interpretation"].append(
             "Average glucose suggests frequent hypoglycemia."
         )
     else:
         report["clinical_interpretation"].append(
-            "Average glucose within acceptable range."
+            "Average glucose is within a generally acceptable range."
         )
 
-    if problems["possible_morning_rise"]:
+    if possible_morning_rise:
         report["clinical_interpretation"].append(
-            "Pattern suggests possible dawn phenomenon."
+            "Pattern suggests a possible dawn phenomenon or recurrent morning rise."
         )
 
-    if problems["possible_underbolused_meals"] > 0:
+    if possible_underbolused_meals > 0:
         report["clinical_interpretation"].append(
-            "Some meals may be insufficiently covered by insulin."
+            f"{possible_underbolused_meals} meal(s) appear possibly under-bolused."
         )
 
-    # Recommandations
     report["recommendations"].append(
-        "Review insulin-to-carb ratio with healthcare provider."
+        "Review glucose patterns and insulin-to-carb ratio with the treating clinician."
     )
 
-    if problems["possible_morning_rise"]:
+    if possible_morning_rise:
         report["recommendations"].append(
-            "Evaluate basal insulin or morning correction strategy."
+            "Discuss basal insulin adequacy or morning correction strategy."
         )
 
-    if problems["possible_underbolused_meals"] > 0:
+    if possible_underbolused_meals > 0:
         report["recommendations"].append(
-            "Consider adjusting bolus timing or dose for meals."
+            "Discuss bolus timing and meal coverage for meals associated with larger post-meal rises."
         )
 
     return report
