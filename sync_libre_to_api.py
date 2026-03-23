@@ -12,11 +12,10 @@ load_dotenv(dotenv_path=env_path)
 USERNAME = os.getenv("LIBRELINKUP_USERNAME")
 PASSWORD = os.getenv("LIBRELINKUP_PASSWORD")
 URL = os.getenv("LIBRELINKUP_URL")
-
 API_URL = os.getenv("API_URL")
 HEALTH_URL = os.getenv("HEALTH_URL")
 
-if not USERNAME or not PASSWORD or not API_URL or not HEALTH_URL:
+if not USERNAME or not PASSWORD or not URL or not API_URL or not HEALTH_URL:
     raise ValueError("Variables d'environnement manquantes. Veuillez vérifier votre fichier .env")
 
 
