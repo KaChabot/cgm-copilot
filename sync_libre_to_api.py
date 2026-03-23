@@ -9,11 +9,19 @@ from dotenv import load_dotenv
 env_path = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
+print("🚀 Script LibreLinkUp démarré")
+
 USERNAME = os.getenv("LIBRELINKUP_USERNAME")
 PASSWORD = os.getenv("LIBRELINKUP_PASSWORD")
 URL = os.getenv("LIBRELINKUP_URL")
 API_URL = os.getenv("API_URL")
 HEALTH_URL = os.getenv("HEALTH_URL")
+
+print("USERNAME:", bool(USERNAME))
+print("PASSWORD:", bool(PASSWORD))
+print("URL:", URL)
+print("API_URL:", API_URL)
+print("HEALTH_URL:", HEALTH_URL)
 
 if not USERNAME or not PASSWORD or not URL or not API_URL or not HEALTH_URL:
     raise ValueError("Variables d'environnement manquantes. Veuillez vérifier votre fichier .env")
